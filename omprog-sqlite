@@ -1,0 +1,166 @@
+#!/usr/bin/perl
+use 5.020;
+use strict;
+use warnings;
+use JSON;
+use DBI;
+
+sub sql_do {
+	my ($db, $sql, @args) = @_;
+	$db->do($sql, {}, @args);
+}
+
+my $dbname = shift or die("$0 needs to be passed a database file as argument\n");
+my $do_init = not -e $dbname;
+my $db = DBI->connect("dbi:SQLite:dbname=$dbname", '', '');
+
+my @schema = (
+	'CREATE TABLE severities (
+		id INTEGER PRIMARY KEY,
+		name VARCHAR(16) UNIQUE ON CONFLICT IGNORE
+	)',
+	'CREATE TABLE facilities (
+		id INTEGER PRIMARY KEY,
+		name VARCHAR(16) UNIQUE ON CONFLICT IGNORE
+	)',
+	'CREATE TABLE programs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name VARCHAR(128) UNIQUE ON CONFLICT IGNORE
+	)',
+	'CREATE TABLE hosts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name VARCHAR(128) UNIQUE ON CONFLICT IGNORE
+	)',
+	'CREATE TABLE events (
+		host INTEGER NOT NULL REFERENCES hosts(id),
+		facility INTEGER NOT NULL REFERENCES facilities(id),
+		program INTEGER NOT NULL REFERENCES programs(id),
+		pid INTEGER,
+		severity INTEGER NOT NULL REFERENCES severities(id),
+		msg TEXT NOT NULL,
+		time INTEGER NOT NULL,
+		registered INTEGER NOT NULL
+	);',
+	'CREATE VIEW msgs AS
+		SELECT
+			h.name AS host,
+			f.name AS facility,
+			p.name AS program,
+			ev.pid AS pid,
+			s.name AS severity,
+			s.id AS severity_num,
+			ev.msg AS msg,
+			ev.time AS time,
+			ev.registered AS registered
+		FROM events AS ev
+			INNER JOIN facilities AS f ON (f.id=ev.facility)
+			INNER JOIN programs AS p ON (p.id=ev.program)
+			INNER JOIN hosts AS h on (h.id=ev.host)
+			INNER JOIN severities AS s ON (s.id=ev.severity);
+	',
+);
+
+sql_do($db, "PRAGMA foreign_keys = ON;");
+init($db) if $do_init;
+
+my $ins_event = $db->prepare('
+	INSERT INTO events
+		(host, facility, program, pid, severity, msg, time, registered)
+		values
+		(?, ?, ?, ?, ?, ?, ?, ?)
+');
+
+my $cache = {
+	programs => {},
+	facilities => {},
+	severites => {},
+};
+
+sub register_factor {
+	my $db = shift;
+	my $table = shift;
+	sql_do($db, "INSERT INTO $table (id, name) values (?, ?)", @_);
+}
+
+sub sync_factor {
+	my $db = shift;
+	my $table = shift;
+	my $id = shift;
+	if (sql_do($db, "SELECT id FROM $table WHERE id=?", $id) == 0) {
+		register_factor($db, $table, $id, @_);
+	}
+}
+
+sub register_facility {
+	my ($db, $ev) = @_;
+	my ($id, $name) = @{$ev}{qw(syslogfacility syslogfacility-text)};
+	return if exists $cache->{facilities}->{$id};
+	sync_factor($db, 'facilities', $id, $name);
+	$cache->{facilities}->{$id} = $name;
+}
+
+sub register_severity {
+	my ($db, $ev) = @_;
+	my ($id, $name) = @{$ev}{qw(syslogseverity syslogseverity-text)};
+	return if exists $cache->{severities}->{$id};
+	sync_factor($db, 'severities', $id, $name);
+	$cache->{severities}->{$id} = $name;
+}
+
+sub register_program {
+	my ($db, $ev) = @_;
+	my $program = $ev->{programname};
+	return $cache->{programs}->{$program} if defined $cache->{programs}->{$program};
+
+	my ($id) = $db->selectrow_array("SELECT id FROM programs WHERE name=?", {}, $program);
+	if (not defined $id) {
+		sql_do($db, "INSERT INTO programs (name) values (?)", $program);
+		($id) = $db->selectrow_array("SELECT last_insert_rowid()");
+	}
+	$cache->{programs}->{$program} = $id;
+	return $id;
+}
+
+sub register_host {
+	my ($db, $ev) = @_;
+	my $host = $ev->{hostname};
+	return $cache->{hosts}->{$host} if defined $cache->{hosts}->{$host};
+
+	my ($id) = $db->selectrow_array("SELECT id FROM hosts WHERE name=?", {}, $host);
+	if (not defined $id) {
+		sql_do($db, "INSERT INTO hosts (name) values (?)", $host);
+		($id) = $db->selectrow_array("SELECT last_insert_rowid()");
+	}
+	$cache->{hosts}->{$host} = $id;
+	return $id;
+}
+
+sub init {
+	my $db = shift;
+	$db->do($_) for @schema;
+}
+
+while(<>) {
+	my $ev = decode_json($_);
+
+	$db->begin_work;
+	register_facility($db, $ev);
+	register_severity($db, $ev);
+	$ev->{host_id} = register_host($db, $ev);
+	$ev->{prog_id} = register_program($db, $ev);
+
+	my ($pid) = $ev->{syslogtag} =~ /\[(0-9+)\]$/;
+	$ev->{pid} = $pid;
+
+	$ins_event->execute(@{$ev}{qw(
+		host_id
+		syslogfacility
+		prog_id
+		pid
+		syslogseverity
+		msg
+		timereported
+		timegenerated
+	)});
+	$db->commit;
+}

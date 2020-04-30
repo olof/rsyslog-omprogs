@@ -1,0 +1,11 @@
+# config for rsyslog to feed everything to an sqlite databas
+# (unless the module is already loaded!)
+module (load="omprog")
+
+# The template should probably be left as is, or the script may
+# break. (The script is fed json lines, and expects at least the
+# listed attributes to be present.)
+template(name="sqlite_json" type="string" string="{%msg:::jsonf%,%HOSTNAME:::jsonf:hostname%,%syslogfacility-text:::jsonf%,%syslogfacility:::jsonf%,%syslogseverity-text:::jsonf%,%syslogseverity:::jsonf%,%programname:::jsonf%,%syslogtag:::jsonf%,%timereported:::date-rfc3339,jsonf%,%timegenerated:::date-rfc3339,jsonf%}\n")
+
+# adjust paths in the binary parameter according to your environment
+*.* action(type="omprog" binary="/sbin/omprog-sqlite /var/log/syslog.db" template="sqlite_json")

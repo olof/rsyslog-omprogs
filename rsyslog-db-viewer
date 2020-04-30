@@ -1,0 +1,90 @@
+#!/usr/bin/perl
+use 5.020;
+use warnings;
+use Getopt::Long;
+use DBI;
+use Data::Dumper;
+
+GetOptions(my $opts = {
+	database => '/var/log/database',
+}, qw(
+	database=s
+	facility=s
+	program=s
+	host=s
+	min-severity=s
+	severity=s
+	list-facilities
+	list-severities
+	list-hosts
+	list-programs
+)) or die;
+
+my $db = DBI->connect("dbi:SQLite:dbname=$opts->{database}", '', '');
+
+sub resolve_name {
+	my $type = shift;
+	my $name = shift;
+	my ($id) = $db->selectrow_array("SELECT id FROM $type WHERE name=?", {}, $name);
+	$id
+}
+
+sub list {
+	my $type = shift;
+	sort keys %{$db->selectall_hashref("SELECT name FROM $type", "name")};
+}
+
+do {
+	local $, = "\n";
+	say(list('hosts')), exit 0 if $opts->{'list-hosts'};
+	say(list('severities')), exit 0 if $opts->{'list-severities'};
+	say(list('programs')), exit 0 if $opts->{'list-programs'};
+	say(list('facilities')), exit 0 if $opts->{'list-facilities'};
+};
+
+sub resolve_facility { resolve_name('facilities', @_) }
+sub resolve_severity { resolve_name('severities', @_) }
+sub resolve_program { resolve_name('programs', @_) }
+sub resolve_host { resolve_name('host', @_) }
+
+my ($facility, $program, $host);
+my $severity_name = $opts->{severity} // $opts->{'min-severity'};
+$facility = resolve_facility($opts->{facility}) if defined $opts->{facility};
+$program = resolve_program($opts->{program}) if defined $opts->{program};
+$host = resolve_host($opts->{host}) if defined $opts->{host};
+my $severity = defined $severity_name ? resolve_severity($severity_name) : 10;
+
+say Dumper $program;
+
+my @conditions;
+push @conditions, 's.id = ?' if defined $opts->{'severity'};
+push @conditions, 's.id <= ?' if defined $opts->{'min-severity'} and not defined $opts->{'severity'};
+push @conditions, 'f.id = ?' if defined $facility;
+push @conditions, 'p.id = ?' if defined $program;
+push @conditions, 'h.id = ?' if defined $host;
+my $conditions = "WHERE " . join(" AND ", @conditions);
+
+my $query = "SELECT
+		h.name as host,
+		ev.time as time,
+		f.name as facility,
+		p.name as program,
+		s.name as severity,
+		ev.msg as msg
+	FROM events AS ev
+	INNER JOIN hosts AS h ON (h.id=ev.host)
+	INNER JOIN programs AS p ON (p.id=ev.program)
+	INNER JOIN severities AS s ON (s.id=ev.severity)
+	INNER JOIN facilities AS f ON (f.id=ev.facility)
+	$conditions;";
+my @args = $severity;
+push @args, $facility if defined $facility;
+push @args, $program if defined $program;
+push @args, $host if defined $host;
+
+say STDERR $query;
+say STDERR sprintf "[%s]", join(', ', @args);
+
+for my $ev ($db->selectall_array($query, {Slice => {}}, @args)) {
+	printf "%s: %s: %s: %s: %s: %s\n", @{$ev}{qw(time host facility program severity msg)}
+}
