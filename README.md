@@ -242,7 +242,7 @@ cumulative**, i.e.  the values *do* reset each time they are printed. This
 is ideal behavior for us, so you don't have to do anything special in your
 graphite queries. There is however an unbound configuration to change this,
 so if you do see ever increasing values, see if `statistics-cumulative:
-yes` in your unbound configuration. Either change this, or use the
+yes` is set in your unbound configuration. Either change this, or use the
 `derivative()` function in your graphite queries, just as for nsd.
 
 Sample input:
