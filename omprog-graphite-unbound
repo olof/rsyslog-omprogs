@@ -1,0 +1,59 @@
+#!/usr/bin/perl
+use 5.020;
+use warnings;
+use File::Slurp;
+use IO::Socket;
+
+#sample inputs:
+# "turing# [7613:0] info: server stats for thread 0: 89 queries, 84 answers from cache, 5 recursions, 43 prefetch, 0 rejected by ip ratelimiting"
+# "turing# [7613:0] info: server stats for thread 0: requestlist max 67 avg 14 exceeded 0 jostled 0"
+# "turing# [7613:0] info: average recursion processing time 0.121216 sec"
+
+sub carbon {
+	my ($carbon_host, $port, $prefix) = @_;
+
+	sub {
+		my $s = IO::Socket::INET->new(
+			Proto => 'tcp',
+			PeerAddr => $carbon_host,
+			PeerPort => $port,
+		);
+
+		for (@_) {
+			my ($name, $value, $time) = @$_;
+			print $s "$prefix.$name $value $time\n";
+		}
+
+		close $s;
+	}
+}
+
+my $submit = carbon("localhost", 2003, "unbound");
+
+sub process {
+	my %data;
+	my $hostname = shift;
+	my $thread = shift;
+	local $_ = shift;
+
+	if (/^requestlist (.*)/) {
+		%data = split /\h+/, $1;
+		%data = map {("reqlist.$_" => $data{$_})} keys %data;
+	} else {
+		%data = map { reverse split(/\h+/, $_, 2) } split /,\h*/;
+	}
+
+	$submit->(map { ["$hostname.thr-$thread.$_", $data{$_}, time] } map { lc(s/\h+/_/r) } keys %data);
+}
+
+while (<>) {
+	my ($hostname) = /^(\w+)#/ or next;
+	s/^(\w+)#//;
+	s/^\h*\[[0-9]+(?::[0-9]+)?\] info: // or next;
+
+	if (my ($thread, $stats) = /^server stats for thread ([0-9]+): (.*)/) {
+		process($hostname, $thread, $stats);
+	} elsif (my ($time) = /^average recursion processing time ([0-9]+\.[0-9]+) sec$/) {
+		$submit->(["$hostname.processing_avg_ms", int($time * 1000), time]);
+	}
+}

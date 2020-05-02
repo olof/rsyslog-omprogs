@@ -1,0 +1,50 @@
+#!/usr/bin/perl
+use 5.020;
+use warnings;
+use File::Slurp;
+use IO::Socket;
+use Data::Dumper;
+
+#sample inputs:
+# "turing#NSTATS 1588369800 1588368963 A=8 AAAA=7"
+# "turing#XSTATS 1588369800 1588368963 RR=0 RNXD=0 RFwdR=0 RDupR=0 RFail=0 RFErr=0 RErr=0 RAXFR=0 RLame=0 ROpts=0 SSysQ=0 SAns=15 SFwdQ=0 SDupQ=0 SErr=0 RQ=15 RIQ=0 RFwdQ=0 RDupQ=0 RTCP=0 SFwdR=0 SFail=0 SFErr=0 SNaAns=0 SNXD=0 RUQ=0 RURQ=0 RUXFR=0 RUUpd=0"
+
+sub carbon {
+	my ($carbon_host, $port, $prefix) = @_;
+
+	sub {
+		my $s = IO::Socket::INET->new(
+			Proto => 'tcp',
+			PeerAddr => $carbon_host,
+			PeerPort => $port,
+		);
+
+		for (@_) {
+			my ($name, $value, $time) = @$_;
+			print $s "$prefix.$name $value $time\n";
+		}
+
+		close $s;
+	}
+}
+
+my $submit = carbon("localhost", 2003, "nsd");
+
+my %types = (
+	n => 'rtypes',
+	x => 'metrics',
+);
+
+sub stats {
+	my ($hostname, $type, $stats) = @_;
+	open my $fh, '>', '/tmp/nsd.stats.log' or die;
+	my %data = map { split /=/, $_, 2 } split /\h+/, $stats;
+	say $fh Dumper \@_;
+	$submit->(map {
+		["$hostname.$types{$type}.$_", $data{$_}, time]
+	} keys %data);
+}
+
+while (<>) {
+	stats($1, lc($2), $3) if /^(\w+)#\h*(N|X)STATS \d+ \d+ (.*)/;
+}
