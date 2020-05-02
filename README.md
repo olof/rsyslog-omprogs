@@ -178,6 +178,33 @@ To enable them in rsyslog, first load the module and define a template:
 The scripts expect lines prefixed with the hostname of the message origin,
 followed by a `#` and then the message.
 
+Also make sure that you configuration unbound/nsd to output metrics at a
+rate compatible with the minimum retention period in carbon, or else you'll
+see weird values/gaps. For instance, for nsd, you add the following section
+to carbon's storage-schema.conf (first match from the top wins):
+
+    [nsd]
+    pattern = ^nsd\.
+    retentions = 60s:90d
+
+Then, you should add a matching statement in nsd.conf (i.e. dump stats once
+every minute):
+
+    server:
+      statistics: 60
+
+And similarly, for unbound (let's say we want a granularity of 10 minutes
+instead), here's the section of carbon's storage-schema.conf:
+
+    [unbound]
+    pattern = ^unbound\.
+    retentions = 600s:90d
+
+and here's the setting you want in unbound.conf:
+
+    server:
+      statistics-interval: 600
+
 Currently the scripts reuse some code by means of duplication, which is...
 fine? I guess that's where all my security holes will be found. But it does
 simplify deployment, as you just need to drop one file on the target per
