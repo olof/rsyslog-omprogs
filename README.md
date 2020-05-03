@@ -213,14 +213,17 @@ receive your messages, or what's the point?).
 Enable in rsyslog with a config like this (change the path to the script to
 match your environment):
 
-    :programname,isequal,"nsd" action(type="omprog" binary="/sbin/omprog-graphite-nsd" template="graphite_forward")
+    :programname,isequal,"nsd" action(type="omprog" binary="/sbin/omprog-graphite-nsd localhost" template="graphite_forward")
 
 or
 
-    if $programname == "nsd" then action(type="omprog" binary="/sbin/omprog-graphite-nsd" template="graphite_forward")
+    if $programname == "nsd" then action(type="omprog" binary="/sbin/omprog-graphite-nsd localhost" template="graphite_forward")
 
 (they are equivalent; the former is objectively prettier, the latter is
 more expressive.)
+
+`localhost` in the above examples is where the carbon service is listening
+(using the tcp line protocol listener).
 
 You can filter further to only match the actual stats log messages, but I
 leave it as an exercise for the reader. (Do this excercise if you expect

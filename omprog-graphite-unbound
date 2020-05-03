@@ -27,7 +27,9 @@ sub carbon {
 	}
 }
 
-my $submit = carbon("localhost", 2003, "unbound");
+my $carbon_host = shift or die("usage: $0 <carbon_hostname> [port]\n");
+my $carbon_port = shift // "2003";
+my $submit = carbon($carbon_host, $carbon_port, "unbound");
 
 sub process {
 	my %data;
