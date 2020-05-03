@@ -1,0 +1,13 @@
+# config for rsyslog to feed everything to an sqlite databas
+# (unless the module is already loaded!)
+module (load="omprog")
+
+# The template should probably be left as is, or the script may break.
+template(name="graphite_forward" type="string" string="%HOSTNAME%#%msg%\n")
+
+## adjust paths in the binary parameter according to your environment
+## change localhost to where your carbon service is listening (the tcp
+## line protocol listener; defaults to port 2003, you can supply a
+## port number as a second argument if it differs).
+:programname,isequal,"nsd" action(type="omprog" binary="/sbin/omprog-graphite-nsd localhost" template="graphite_forward")
+:programname,isequal,"unbound" action(type="omprog" binary="/sbin/omprog-graphite-unbound localhost 2003" template="graphite_forward")
