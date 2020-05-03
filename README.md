@@ -14,25 +14,6 @@ There is also helper utilities:
 
  * rsyslog-db-viewer: helper script to query the log database from omprog-sqlite
 
-### Dependencies
-
-All scripts depend on the following Perl modules:
-
- * JSON
-
-In debian/ubuntu:
-
-    apt-get install libjson-perl
-
-omprog-sqlite (and rsyslog-db-viewer) additionally depends on:
-
- * DBI
- * DBD::SQLite3
-
-In debian/ubuntu:
-
-    apt-get install libdbi-perl libdbd-sqlite3-perl
-
 ## omprog-sqlite
 
 Instead of a flat list of syslog messages as is easily provided by the
@@ -61,6 +42,18 @@ What this allows us to do stuff like:
 But if you don't see any potential use cases for having the messages in an
 sql database, you are not the intended audience. Thank you for having shown
 interest.)
+
+### Dependencies
+
+omprog-sqlite (and rsyslog-db-viewer) depends on:
+
+ * JSON
+ * DBI
+ * DBD::SQLite3
+
+In debian/ubuntu:
+
+    apt-get install libjson-perl libdbi-perl libdbd-sqlite3-perl
 
 ### Table definitions
 
@@ -214,14 +207,17 @@ omprog (plus rsyslog config).
 
 Extract the statistics nsd prints to syslog and send them to graphite.
 
-Enable in rsyslog with a config like this (change the path to the
-script to match your environment):
+It only depends on perl (and I guess you would need a carbon server to
+receive your messages, or what's the point?).
+
+Enable in rsyslog with a config like this (change the path to the script to
+match your environment):
 
     :programname,isequal,"nsd" action(type="omprog" binary="/sbin/omprog-graphite-nsd" template="graphite_forward")
 
 or
 
-    if $programname == 'nsd' then action(type="omprog" binary="/sbin/omprog-graphite-nsd" template="graphite_forward")
+    if $programname == "nsd" then action(type="omprog" binary="/sbin/omprog-graphite-nsd" template="graphite_forward")
 
 (they are equivalent; the former is objectively prettier, the latter is
 more expressive.)
@@ -251,11 +247,17 @@ goes to `nsd.example.metrics.*`
 
 Extract the statistics unbound prints to syslog and send them to graphite.
 
+It only depends on perl (and I guess you would need a carbon server to
+receive your messages, or what's the point?).
+
+Enable in rsyslog with a config like this (change the path to the script to
+match your environment):
+
     :programname,isequal,"unbound" action(type="omprog" binary="/sbin/omprog-graphite-unbound" template="graphite_forward")
 
 or
 
-    if $programname == 'unbound' then action(type="omprog" binary="/sbin/omprog-graphite-unbound" template="graphite_forward")
+    if $programname == "unbound" then action(type="omprog" binary="/sbin/omprog-graphite-unbound" template="graphite_forward")
 
 (they are equivalent; the former is objectively prettier, the latter is more
 expressive.)
