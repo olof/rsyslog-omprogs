@@ -2,7 +2,6 @@
 use 5.020;
 use warnings;
 use IO::Socket;
-use Data::Dumper;
 
 #sample inputs:
 # "turing#NSTATS 1588369800 1588368963 A=8 AAAA=7"
@@ -36,9 +35,7 @@ my %types = (
 
 sub stats {
 	my ($hostname, $type, $stats) = @_;
-	open my $fh, '>', '/tmp/nsd.stats.log' or die;
 	my %data = map { split /=/, $_, 2 } split /\h+/, $stats;
-	say $fh Dumper \@_;
 	$submit->(map {
 		["$hostname.$types{$type}.$_", $data{$_}, time]
 	} keys %data);
